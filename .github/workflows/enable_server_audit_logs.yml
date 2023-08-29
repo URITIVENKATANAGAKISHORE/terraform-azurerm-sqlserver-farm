@@ -1,0 +1,88 @@
+#############################################################################################################################
+# Purpose: This workflow will enable the auditing for Sql Server and also enables the Mircosoft Support Operations on Dev & Test Environments
+#############################################################################################################################
+
+name: sql-server-audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      ResourceGroupName:
+        description: 'Name of the Resource Group'
+        required: true
+      SqlServerName:
+        description: 'Name of the SQL Server'
+        required: true
+      LAWResourceId:
+        description: 'ID of the Log Analytics Workspace'
+        required: true
+      EventHubName:
+        description: 'Name of the EventHub'
+        required: true
+      EventhubAuthorizationRuleResourceId:
+        description: 'ID of the Eventhub AuthorizationRule Resource'
+        required: true
+      StorageAccountResourceId:
+        description: 'ID of the Storage Account'
+        required: true
+      SUBSCRIPTION_ID:
+        description: 'Subscription ID for Azure Authentication'
+        required: true
+      TENANT_ID:
+        description: 'Tenant ID as assigned in Azure AD. Defaults to Tenant ID'
+        default: '8931e14w-9134-4288-fasf-5e2c8412f074'
+        required: false
+      
+jobs:
+  audit-sql-server-dev:
+
+    runs-on: [ self-hosted, kubernetes, on-prem ]
+    container: mcr.microsoft.com/azure-powershell:latest
+    
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v2
+      
+      - name: Login to Azure account
+        uses: Azure/powershell@v1
+        with:
+          inlineScript: |
+            $Password       =  ConvertTo-SecureString -String ${{ secrets.AZURE_CLIENT_SECRET }} -AsPlainText -Force
+            $tenantID       = "${{ github.event.inputs.TENANT_ID }}"
+            $subscriptionID = "${{ github.event.inputs.SUBSCRIPTION_ID }}"
+            $Credential     =  New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ${{ secrets.AZURE_CLIENT_ID }}, $Password
+            Connect-AzAccount -ServicePrincipal -Credential $Credential -Tenant $tenantID -Subscription $subscriptionID | Out-Null
+          azPSVersion: 3.1.0
+
+      - name: Enable SQL Server Audit and MS Support Operations on Dev Environment
+        uses: Azure/powershell@v1
+        with:
+          inlineScript: |
+            # Read Input Variables
+            
+            $resourcegroupName  = "${{ github.event.inputs.ResourceGroupName }}"
+            $sqlserverName      = "${{ github.event.inputs.SqlServerName }}"
+            $lawResourceId      = "${{ github.event.inputs.LAWResourceId }}"
+            $eventhubName       = "${{ github.event.inputs.EventHubName }}"
+            $eventhubAuthorizationRuleResourceId = "${{ github.event.inputs.EventhubAuthorizationRuleResourceId }}"
+            $storageAccountResourceId = "${{ github.event.inputs.StorageAccountResourceId }}"
+
+            # Handle null or empty values for $lawResourceId and $storageAccountResourceId
+            if (-not $lawResourceId) {
+              $lawResourceId = $null
+            }
+
+            if (-not $EventHubName) {
+              $EventHubName = $null
+            }
+
+            if (-not $EventhubAuthorizationRuleResourceId) {
+              $EventhubAuthorizationRuleResourceId = $null
+            }
+
+            if (-not $storageAccountResourceId) {
+              $storageAccountResourceId = $null
+            }
+
+            ./scripts/enable_sql_server_audit.ps1 $resourcegroupName $sqlserverName $lawResourceId $eventhubName $eventhubAuthorizationRuleResourceId $storageAccountResourceId
+          azPSVersion: 3.1.0
